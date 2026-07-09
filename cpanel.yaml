@@ -1,0 +1,167 @@
+---
+# ============================================================
+# cPanel deployment manifest
+# Project : Commain (Laravel 12)
+# Layout  : ~/commain/  (application)  +  ~/public_html/ (web root)
+#           ~/public_html/index.php is a stub that bootstraps the
+#           Laravel app from the sibling `commain/` directory.
+# ============================================================
+
+# ---------- 1. Metadata ----------
+---
+deployment:
+  id: "commain-production"
+  name: "Commain Deployment"
+  description: "Deploy Commain Laravel 12 ke cPanel shared hosting (folder commain/, document root public_html/)."
+  author: "ardiven"
+  email: "admin@example.com"
+  version: "1.0.0"
+
+# ---------- 2. Source upload ----------
+---
+upload:
+  # Asal upload: gunakan pipeline GitHub/GitLab/Bitbucket.
+  # Saat pertama deploy, lakukan clone manual via cPanel Terminal:
+  #   cd ~ && git clone https://github.com/<user>/commain.git commain
+  #
+  # Untuk deployment berikutnya, biarkan kosong agar cPanel
+  # otomatis `git pull` di folder yang sudah ada.
+  source: ""
+
+  # Path absolut di server. WAJIB di luar public_html.
+  destination: "/home/<CPANEL_USER>/commain"
+
+  # File/folder yang TIDAK di-upload (di-resolve relatif terhadap
+  # working copy lokal sebelum tar). Sangat penting agar tidak
+  # menimpa konfigurasi lokal server & database.
+  excludes:
+    - ".git"
+    - ".gitignore"
+    - ".github"
+    - ".editorconfig"
+    - ".gitattributes"
+    - ".env"
+    - ".env.example"
+    - "node_modules"
+    - "tests"
+    - "storage/logs/*.log"
+    - "storage/framework/cache/data/*"
+    - "storage/framework/sessions/*"
+    - "storage/framework/views/*"
+    - "storage/app/public/*"
+    - "public/storage"
+    - "database/database.sqlite"
+    - "database/database.sqlite-journal"
+    - "*.md"
+    - "readme.md"
+    - "README.md"
+    - "license"
+    "LICENSE"
+    - ".idea"
+    - ".vscode"
+    - "package-lock.json"
+    - "composer.lock"
+    - "vendor"
+    - "phpunit.xml"
+    - "phpunit.xml.dist"
+    - ".phpunit.result.cache"
+
+# ---------- 3. Tasks (jalankan SETELAH upload) ----------
+# Urutan eksekusi = urutan list di bawah ini.
+---
+tasks:
+  # ---------- 3.1. Composer install ----------
+  - id: "composer-install"
+    name: "Install / update Composer dependencies"
+    description: "Jalankan `composer install` tanpa dev dependencies."
+    cwd: "/home/<CPANEL_USER>/commain"
+    timeout: 600
+    commands:
+      - "composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist"
+
+  # ---------- 3.2. Node.js build (Vite asset) ----------
+  - id: "npm-install"
+    name: "Install Node modules"
+    description: "Install dependency frontend (Vite, Tailwind, Alpine, Chart.js deps)."
+    cwd: "/home/<CPANEL_USER>/commain"
+    timeout: 600
+    commands:
+      - "npm ci --no-audit --no-fund || npm install --no-audit --no-fund"
+
+  - id: "npm-build"
+    name: "Build Vite production assets"
+    description: "Bundle CSS & JS ke public/build/."
+    cwd: "/home/<CPANEL_USER>/commain"
+    timeout: 600
+    commands:
+      - "npm run build"
+
+  # ---------- 3.3. .env (HANYA dibuat jika belum ada) ----------
+  # JANGAN menimpa .env yang ada (bisa berisi APP_KEY & DB live).
+  - id: "env-bootstrap"
+    name: "Ensure .env exists"
+    description: "Salin .env.example ke .env bila .env belum ada. APP_KEY akan di-generate pada langkah berikutnya."
+    cwd: "/home/<CPANEL_USER>/commain"
+    timeout: 30
+    commands:
+      - "[ -f .env ] || cp .env.example .env"
+
+  - id: "key-generate"
+    name: "Generate APP_KEY (only if empty)"
+    description: "Generate APP_KEY hanya jika belum terisi di .env."
+    cwd: "/home/<CPANEL_USER>/commain"
+    timeout: 30
+    commands:
+      - "php artisan key:generate --ansi --force || true"
+
+  # ---------- 3.4. Storage & symlink publik ----------
+  - id: "storage-link"
+    name: "Create storage symlink"
+    description: "Buat public/storage -> ../storage/app/public agar file upload bisa diakses publik."
+    cwd: "/home/<CPANEL_USER>/commain"
+    timeout: 30
+    commands:
+      - "php artisan storage:link || true"
+
+  # ---------- 3.5. Migration ----------
+  - id: "migrate"
+    name: "Run database migrations"
+    description: "Jalankan migration pada database production (--force wajib di non-local)."
+    cwd: "/home/<CPANEL_USER>/commain"
+    timeout: 180
+    commands:
+      - "php artisan migrate --force --no-interaction"
+
+  # ---------- 3.6. Cache & optimize ----------
+  - id: "optimize"
+    name: "Cache config, route, view, dan event"
+    description: "Generate cache agar load lebih cepat. Membersihkan cache lama terlebih dahulu."
+    cwd: "/home/<CPANEL_USER>/commain"
+    timeout: 120
+    commands:
+      - "php artisan config:clear"
+      - "php artisan route:clear"
+      - "php artisan view:clear"
+      - "php artisan event:clear"
+      - "php artisan optimize"
+
+  # ---------- 3.7. Permission (PENTING di shared hosting) ----------
+  - id: "fix-permissions"
+    name: "Fix storage & bootstrap/cache permissions"
+    description: "Pastikan folder writable oleh web server. Shared hosting biasanya group = user cPanel."
+    cwd: "/home/<CPANEL_USER>/commain"
+    timeout: 60
+    commands:
+      - "chmod -R 775 storage bootstrap/cache"
+      - "chgrp -R <CPANEL_USER> storage bootstrap/cache || true"
+
+  # ---------- 3.8. Maintenance mode (best-effort) ----------
+  - id: "down-up"
+    name: "Toggle maintenance mode (optional)"
+    description: "Aktifkan maintenance saat deploy, lalu matikan. Aman di-skip bila cron job sudah menangani."
+    cwd: "/home/<CPANEL_USER>/commain"
+    timeout: 30
+    continue_on_error: true
+    commands:
+      - "php artisan down --retry=60 --secret=commain-deploy || true"
+      - "php artisan up || true"

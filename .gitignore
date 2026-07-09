@@ -3,9 +3,12 @@
 /public/build
 /public/hot
 /public/storage
+/public/index.cpanel.php
+/public/.htaccess.cpanel
 /storage/*.key
 /storage/pail
 /vendor
+/laravel
 .env
 .env.backup
 .env.production
