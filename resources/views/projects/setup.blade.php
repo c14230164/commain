@@ -352,7 +352,7 @@
 
             async fetchSuggestions(questionId) {
                 try {
-                    const response = await axios.get(`/projects/questions/${questionId}/suggestions`);
+                    const response = await axios.get(`{{ url('/') }}/projects/questions/${questionId}/suggestions`);
                     this.suggestions = { ...this.suggestions, [questionId]: response.data };
                 } catch (e) {}
             },
@@ -389,7 +389,7 @@
             async openReviewModal(variable) {
                 this.selectedVariable = variable;
                 try {
-                    const response = await axios.get(`/projects/variables/${variable.id}/respondents`);
+                    const response = await axios.get(`{{ url('/') }}/projects/variables/${variable.id}/respondents`);
                     this.variableRespondents = response.data;
                     this.showReviewModal = true;
                 } catch (e) {}
@@ -397,7 +397,7 @@
 
             async loadRespondentData(respondentId) {
                 try {
-                    const response = await axios.get(`/projects/{{ $project->id }}/respondent/${respondentId}`);
+                    const response = await axios.get(`{{ url('/') }}/projects/{{ $project->id }}/respondent/${respondentId}`);
                     const data = response.data;
                     this.respondent.id = data.id;
                     this.respondent.paper_id = data.paper_id;
@@ -423,7 +423,7 @@
                 if (!confirm('Hapus entry castor ini?')) return;
                 this.saving = true;
                 try {
-                    const response = await axios.delete(`/projects/{{ $project->id }}/respondent/${this.respondent.id}`);
+                    const response = await axios.delete(`{{ url('/') }}/projects/{{ $project->id }}/respondent/${this.respondent.id}`);
                     if (response.data.success) {
                         this.summary = response.data.summary;
                         this.fetchRespondents();
@@ -439,7 +439,7 @@
                 if (!newName || newName.trim() === '' || newName === variable.name) return;
 
                 try {
-                    const response = await axios.post(`/projects/variables/${variable.id}/rename`, {
+                    const response = await axios.post(`{{ url('/') }}/projects/variables/${variable.id}/rename`, {
                         name: newName
                     });
                     if (response.data.success) {
